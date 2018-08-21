@@ -333,21 +333,32 @@ sum(routeData$outlier_roll_sn, na.rm = TRUE)
 
 # Datasets with outliers removed: if any of outlier columns are TRUE then remove
 
-pmData <- routeData[(routeData$outlier_g_iqr_pm == FALSE &
-                      routeData$outlier_g_mad_pm == FALSE &
+pmData <- routeData[(routeData$outlier_g_iqr_pm == FALSE |
+                      routeData$outlier_g_mad_pm == FALSE |
                       routeData$outlier_g_sn_pm == FALSE) &
-                      routeData$pm_raw != 0,
+                      !is.na(routeData$pm_raw),
                     c("time", "latitude", "longitude", "pm_raw", "altitude", "horizontal_speed", "temp", "humidity", "day", "am", "date", "period", "weekend", "week_period", "time_")]
 
 o3Data <- routeData[routeData$outlier_g_iqr_o3 == FALSE &
                       routeData$outlier_g_mad_o3 == FALSE &
-                      routeData$outlier_g_sn_o3 == FALSE,
+                      routeData$outlier_g_sn_o3 == FALSE &
+                      !is.na(routeData$o3),
                     c("time", "latitude", "longitude", "o3", "altitude", "horizontal_speed", "temp", "humidity", "day", "am", "date", "period", "weekend", "week_period", "time_")]
 
 mq135Data <- routeData[routeData$outlier_g_iqr_mq135 == FALSE &
                       routeData$outlier_g_mad_mq135 == FALSE &
-                      routeData$outlier_g_sn_mq135 == FALSE,
+                      routeData$outlier_g_sn_mq135 == FALSE &
+                      !is.na(routeData$mq135),
                     c("time", "latitude", "longitude", "mq135", "altitude", "horizontal_speed", "temp", "humidity", "day", "am", "date", "period", "weekend", "week_period", "time_")]
+
+########################################################
+
+# Maps
+
+bbox <- make_bbox(longitude, latitude, pmData[,], f = 0.005)
+m <- get_map(bbox, source = "stamen", zoom = 15)
+ggmap(m) +
+  geom_point(aes(x = longitude, y = latitude, color = pm_raw), data = pmData, size = 2)
 
 ########################################################
 
