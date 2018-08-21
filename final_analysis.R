@@ -64,6 +64,7 @@ AddColumns = function(data) {
   data$mq131 <- ifelse(data[, c("date")] < anydate("2018-08-02"), data[, c("mq131")], data[, c("mq131")] * 1.1292) # Corrects slight error in calibration
   data$mq131[data$mq131 <= 1.5] <- NA
   data$temp[data$temp <= 0.1] <- NA
+  data$pm_raw[data$pm_raw == 0] <- NA
   data$humidity[data$humidity <= 0.1 | data$humidity >= 99.9] <- NA
   data$o3 <- ((((((5 - data$mq131) / data$mq131) * 162.26) / 141.6) / 18.473) ^ (-1 / 0.917) ) * 1.9957 # 1.9957 is the ppb to ug/m^3 convertion factor (https://uk-air.defra.gov.uk/assets/documents/reports/cat06/0502160851_Conversion_Factors_Between_ppb_and.pdf)
   #data$correction_factor <- ifelse(is.na(data$humidity) | data$humidity < 60, 1, 1 + 0.25 * (data$humidity/100) * (data$humidity/100) / (1 - (data$humidity/100)))
@@ -150,13 +151,17 @@ abline(h = 51.3798, col = "red")
 # Outlier detection and removal
 
 # (i) IQR outlier detection
-iqr <- IQR(routeData$pm_raw)
-quantiles <- quantile(routeData$pm_raw)
+iqr <- IQR(routeData$pm_raw, na.rm = TRUE)
+quantiles <- quantile(routeData$pm_raw, na.rm = TRUE)
 q1 <- quantiles[2]
 q3 <- quantiles[4]
 upper_bound <- q3 + 1.5 * iqr
 lower_bound <- q1 - 1.5 * iqr
-routeData$outlier_iqr_pm <- ifelse(q3 + 1.5 * iqr < routeData$pm_raw, TRUE, FALSE)
+routeData$outlier_iqr_pm <- ifelse(!is.na(routeData$pm_raw), q3 + 1.5 * iqr < routeData$pm_raw, FALSE)
+quantiles[3]
+iqr
+upper_bound
+lower_bound
 sum(routeData$outlier_iqr_pm)
 
 iqr <- IQR(routeData$o3, na.rm = TRUE)
@@ -166,6 +171,10 @@ q3 <- quantiles[4]
 upper_bound <- q3 + 1.5 * iqr
 lower_bound <- q1 - 1.5 * iqr
 routeData$outlier_iqr_o3 <- ifelse(upper_bound < routeData$o3 | lower_bound > routeData$o3, TRUE, FALSE)
+quantiles[3]
+iqr
+upper_bound
+lower_bound
 sum(routeData$outlier_iqr_o3, na.rm = TRUE)
 
 iqr <- IQR(routeData$mq135, na.rm = TRUE)
@@ -178,11 +187,15 @@ routeData$outlier_iqr_mq135 <- ifelse(q3 + 1.5 * iqr < routeData$mq135, TRUE, FA
 sum(routeData$outlier_iqr_mq135, na.rm = TRUE)
 
 # (ii) MAD outlier detection
-mad <- mad(routeData$pm_raw)
-median <- median(routeData$pm_raw)
+mad <- mad(routeData$pm_raw, na.rm = TRUE)
+median <- median(routeData$pm_raw, na.rm = TRUE)
 upper_bound <- median + 3 * mad
 lower_bound <- median - 3 * mad
-routeData$outlier_mad_pm <- ifelse(upper_bound < routeData$pm_raw, TRUE, FALSE)
+routeData$outlier_mad_pm <- ifelse(!is.na(routeData$pm_raw), upper_bound < routeData$pm_raw, FALSE)
+median
+mad
+upper_bound
+lower_bound
 sum(routeData$outlier_mad_pm)
 
 mad <- mad(routeData$o3, na.rm = TRUE)
@@ -200,11 +213,15 @@ routeData$outlier_mad_mq135 <- ifelse(upper_bound < routeData$mq135, TRUE, FALSE
 sum(routeData$outlier_mad_mq135, na.rm = TRUE)
 
 # (iii) Sn
-sn <- Sn(routeData$pm_raw)
-median <- median(routeData$pm_raw)
+sn <- Sn(na.omit(routeData$pm_raw))
+median <- median(routeData$pm_raw, na.rm = TRUE)
 upper_bound <- median + 3 * sn
 lower_bound <- median - 3 * sn
-routeData$outlier_sn_pm <- ifelse(upper_bound < routeData$pm_raw, TRUE, FALSE)
+routeData$outlier_sn_pm <- ifelse(!is.na(routeData$pm_raw), upper_bound < routeData$pm_raw, FALSE)
+median
+sn
+upper_bound
+lower_bound
 sum(routeData$outlier_sn_pm)
 
 sn <- Sn(na.omit(routeData$o3))
@@ -225,13 +242,13 @@ sum(routeData$outlier_sn_mq135, na.rm = TRUE)
 # Time period outlier detection
 
 routeData <- as.data.frame(routeData %>% group_by(week_period) %>%
-   mutate(outlier_g_iqr_pm    = quantile(pm_raw, na.rm = TRUE)[4] + 1.5 * IQR(pm_raw, na.rm = TRUE) < pm_raw | quantile(pm_raw, na.rm = TRUE)[2] - 1.5 * IQR(pm_raw, na.rm = TRUE) > pm_raw,
+   mutate(outlier_g_iqr_pm    = ifelse(is.na(pm_raw), FALSE, quantile(pm_raw, na.rm = TRUE)[4] + 1.5 * IQR(pm_raw, na.rm = TRUE) < pm_raw) | ifelse(is.na(pm_raw), FALSE, quantile(pm_raw, na.rm = TRUE)[2] - 1.5 * IQR(pm_raw, na.rm = TRUE) > pm_raw),
           outlier_g_iqr_o3    = ifelse(is.na(o3), FALSE, quantile(o3, na.rm = TRUE)[4] + 1.5 * IQR(o3, na.rm = TRUE) < o3 )            | ifelse(is.na(o3), FALSE, quantile(o3, na.rm = TRUE)[2] - 1.5 * IQR(o3, na.rm = TRUE) > o3),
           outlier_g_iqr_mq135    = quantile(mq135, na.rm = TRUE)[4] + 1.5 * IQR(mq135, na.rm = TRUE) < mq135 | quantile(mq135, na.rm = TRUE)[2] - 1.5 * IQR(mq135, na.rm = TRUE) > mq135,
-          outlier_g_mad_pm    = quantile(pm_raw, na.rm = TRUE)[3] + 3 * mad(pm_raw, na.rm = TRUE) < pm_raw        | quantile(pm_raw, na.rm = TRUE)[3] - 3 * mad(pm_raw, na.rm = TRUE) > pm_raw,
+          outlier_g_mad_pm    = ifelse(is.na(pm_raw), FALSE, quantile(pm_raw, na.rm = TRUE)[3] + 3 * mad(pm_raw, na.rm = TRUE) < pm_raw )       | ifelse(is.na(pm_raw), FALSE, quantile(pm_raw, na.rm = TRUE)[3] - 3 * mad(pm_raw, na.rm = TRUE) > pm_raw),
           outlier_g_mad_o3    = ifelse(is.na(o3), FALSE, quantile(o3, na.rm = TRUE)[3] + 3 * mad(o3, na.rm = TRUE) < o3 )                   | ifelse(is.na(o3), FALSE, quantile(o3, na.rm = TRUE)[3] - 3 * mad(o3, na.rm = TRUE) > o3),
           outlier_g_mad_mq135    = quantile(mq135, na.rm = TRUE)[3] + 3 * mad(mq135, na.rm = TRUE) < mq135        | quantile(mq135, na.rm = TRUE)[3] - 3 * mad(mq135, na.rm = TRUE) > mq135,
-          outlier_g_sn_pm = quantile(pm_raw, na.rm = TRUE)[3] + 3 * Sn(na.omit(pm_raw)) < pm_raw                  | quantile(pm_raw, na.rm = TRUE)[3] - 3 * Sn(na.omit(pm_raw)) > pm_raw,
+          outlier_g_sn_pm = ifelse(is.na(pm_raw), FALSE, quantile(pm_raw, na.rm = TRUE)[3] + 3 * Sn(na.omit(pm_raw)) < pm_raw )                 | ifelse(is.na(pm_raw), FALSE, quantile(pm_raw, na.rm = TRUE)[3] - 3 * Sn(na.omit(pm_raw)) > pm_raw),
           outlier_g_sn_o3 = ifelse(is.na(o3), FALSE, quantile(o3, na.rm = TRUE)[3] + 3 * Sn(na.omit(o3)) < o3 )                             | ifelse(is.na(o3), FALSE, quantile(o3, na.rm = TRUE)[3] - 3 * Sn(na.omit(o3)) > o3),
           outlier_g_sn_mq135 = quantile(mq135, na.rm = TRUE)[3] + 3 * Sn(na.omit(mq135)) < mq135                  | quantile(mq135, na.rm = TRUE)[3] - 3 * Sn(na.omit(mq135)) > mq135
    ))
@@ -274,17 +291,17 @@ sum(routeData$outlier_g_sn_mq135)
 window <- 29
 
 routeData <- as.data.frame(routeData %>% group_by(period) %>%
-  mutate(median = rollapplyr(pm_raw, window, median, fill = median(pm_raw)),
-         mad = rollapplyr(pm_raw, window, mad, fill = mad(pm_raw)),
-         iqr = rollapplyr(pm_raw, window, IQR, fill = IQR(pm_raw)),
-         sn = rollapplyr(pm_raw, window, Sn, fill = Sn(pm_raw)),
+  mutate(median = rollapplyr(pm_raw, window, median, fill = median(pm_raw, na.rm = TRUE), partial = TRUE),
+         mad = rollapplyr(pm_raw, window, mad, fill = mad(pm_raw, na.rm = TRUE), partial = TRUE),
+         iqr = rollapplyr(pm_raw, window, IQR, fill = IQR(pm_raw, na.rm = TRUE), na.rm = TRUE),
+         sn = rollapplyr(pm_raw, window, function(x) Sn(na.omit(x)), fill = Sn(na.omit(pm_raw)), partial = TRUE),
          outlier_roll_iqr = median + 1.5 * iqr < pm_raw,
          outlier_roll_mad = median + 3 * mad < pm_raw,
          outlier_roll_sn = median + 3 * sn < pm_raw
         ))
-sum(routeData$outlier_roll_iqr)
-sum(routeData$outlier_roll_mad)
-sum(routeData$outlier_roll_sn)
+sum(routeData$outlier_roll_iqr, na.rm = TRUE)
+sum(routeData$outlier_roll_mad, na.rm = TRUE)
+sum(routeData$outlier_roll_sn, na.rm = TRUE)
 
 routeData <- as.data.frame(routeData %>% group_by(period) %>%
   mutate(median = rollapplyr(o3, window, median, fill = median(o3, na.rm = TRUE), partial = TRUE),
